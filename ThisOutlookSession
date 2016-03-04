@@ -1,0 +1,150 @@
+Option Explicit
+Public WithEvents myInboxItems As Outlook.Items
+'http://stackoverflow.com/questions/7054453/how-to-add-ms-outlook-reminders-event-handlers-with-vba
+
+Private Sub Application_Startup()
+    Set myInboxItems = Application.GetNamespace("MAPI").GetDefaultFolder(olFolderInbox).Items
+End Sub
+
+Private Sub myInboxItems_ItemAdd(ByVal myItem As Object)
+'https://msdn.microsoft.com/en-us/library/office/ff869609.aspx
+' (re: |fw: )?
+    Dim strPattern As String: strPattern = "\[[a-zA-Z0-9_\-\/]+\]"
+    Dim strName As String
+
+    
+    If isPatternMatch(myItem.Subject, strPattern) Then
+       strName = getPatternMatch(myItem.Subject, "\[[a-zA-Z0-9_\-\/]+\]")
+       
+       'Move Item to the projectName folder
+       If strName <> "" Then Call moveItemToFolder(myItem, "Projects\" & strName)
+       
+    End If
+
+End Sub
+
+'Supports Sub Folder "Folder\SubFolder\...."
+Sub moveItemToFolder(myItem As Object, strFolder As String, Optional parentFolder As Object = Nothing)
+ 
+    Dim pos As Integer
+    Dim folders() As String
+    Dim rootFolder As String
+    rootFolder = strFolder
+    pos = InStr(1, rootFolder, "\", vbTextCompare)
+    If (pos > 1 And pos < Len(strFolder)) Then
+       folders = Split(rootFolder, "\", 2)
+       rootFolder = folders(0)
+    End If
+    
+    'Call moveItemToFolder(myItem, folders(1))
+    On Error Resume Next
+    Dim myParentFolder As Outlook.Folder
+    Dim myDestFolder As Outlook.Folder
+    
+    If parentFolder Is Nothing Then
+        'default to Inbox
+        Set myParentFolder = Application.GetNamespace("MAPI").GetDefaultFolder(olFolderInbox)
+    Else
+        Set myParentFolder = parentFolder
+    End If
+    Set myDestFolder = myParentFolder.folders(rootFolder)
+    If myDestFolder Is Nothing Then
+       If Not myItem Is Nothing Then Set myDestFolder = myParentFolder.folders.Add(rootFolder)
+    End If
+    
+    If (pos > 1 And pos < Len(strFolder)) Then
+       Call moveItemToFolder(myItem, folders(1), myDestFolder)
+    Else
+       If Not myItem Is Nothing Then myItem.Move myDestFolder
+    End If
+End Sub
+
+Sub adhoc_ProcessItemsToProjects()
+    Dim myNameSpace As Outlook.NameSpace
+    Dim myInbox As Outlook.Folder
+    'Dim myDestFolder As Outlook.Folder
+    Dim myItems As Outlook.Items
+    Dim myItem As Object
+    
+    Set myNameSpace = Application.GetNamespace("MAPI")
+    Set myInbox = myNameSpace.GetDefaultFolder(olFolderInbox)
+    'Set myItems = myInbox.folders("Projects").Items
+    Set myItems = myInbox.Items
+    'Set myDestFolder = myInbox.folders("Personal Mail")
+    Dim counter As Integer
+    counter = myItems.Count
+    While counter > 0
+        Call myInboxItems_ItemAdd(myItems.Item(counter))
+        counter = counter - 1
+    Wend
+End Sub
+
+
+
+Sub test_moveItemToFolder()
+   Call moveItemToFolder(Nothing, "folder")
+   Call moveItemToFolder(Nothing, "folder\sub")
+   Call moveItemToFolder(Nothing, "folder\sub\sub sub")
+End Sub
+
+
+Function isPatternMatch(strItem As String, strPattern As String) As Boolean
+'Prerequisite Reference: Microsoft VBScript Regular Expressions 5.5
+'http://stackoverflow.com/questions/22542834/how-to-use-regular-expressions-regex-in-microsoft-excel-both-in-cell-and-loops
+    Dim regEx As New RegExp
+    
+    With regEx
+       .Global = False
+       .MultiLine = False
+       .IgnoreCase = True
+       .Pattern = strPattern
+    End With
+    
+    isPatternMatch = regEx.Test(strItem)
+
+End Function
+
+Function getPatternMatch(strItem As String, strPattern As String) As String
+'http://stackoverflow.com/questions/8146485/returning-a-regex-match-in-vba-excel
+    Dim result As String
+    Dim allMatches As Object
+    Dim regEx As New RegExp
+    
+    With regEx
+       .Global = False
+       .MultiLine = False
+       .IgnoreCase = True
+       .Pattern = strPattern
+    End With
+    Set allMatches = regEx.Execute(strItem)
+    
+    If allMatches.Count <> 0 Then
+        result = allMatches.Item(0)
+    End If
+    
+    getPatternMatch = result
+
+End Function
+
+
+Sub testmoveInboxItem()
+Dim mc As myClass
+Set mc = New myClass
+   mc.moveInboxItem ("Project\[Test]")
+End Sub
+
+Sub testPattern()
+'Dim mc As myClass
+'Set mc = New myClass
+
+Dim strPattern As String: strPattern = "^(re: )?\[[a-zA-Z0-9_\-\/]+\]"
+
+Dim result As Boolean
+
+result = isPatternMatch("[test]", strPattern)
+result = isPatternMatch("asd[test]456", strPattern)
+result = isPatternMatch("re: [test]645", strPattern)
+result = isPatternMatch("Re:[test654", strPattern)
+
+End Sub
+
